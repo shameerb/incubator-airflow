@@ -18,4 +18,4 @@
 # under the License.
 #
 
-version = '1.10.0beta1'
+version = '1.10.0beta1+incubating'
