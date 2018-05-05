@@ -34,60 +34,6 @@ try:
 except NameError:
     basestring = str  # For python3 compatibility
 
-
-# TODO Use jenkins_urlopen instead when it will be available
-# in the stable python-jenkins version (> 0.4.15)
-def jenkins_request_with_headers(jenkins_server, req, add_crumb=True):
-    """
-    We need to get the headers in addition to the body answer
-    to get the location from them
-    This function is just a copy of the one present in python-jenkins library
-    with just the return call changed
-    :param jenkins_server: The server to query
-    :param req: The request to execute
-    :param add_crumb: Boolean to indicate if it should add crumb to the request
-    :return:
-    """
-    try:
-        if jenkins_server.auth:
-            req.add_header('Authorization', jenkins_server.auth)
-        if add_crumb:
-            jenkins_server.maybe_add_crumb(req)
-        response = urlopen(req, timeout=jenkins_server.timeout)
-        response_body = response.read()
-        response_headers = response.info()
-        if response_body is None:
-            raise jenkins.EmptyResponseException(
-                "Error communicating with server[%s]: "
-                "empty response" % jenkins_server.server)
-        return {'body': response_body.decode('utf-8'), 'headers': response_headers}
-    except HTTPError as e:
-        # Jenkins's funky authentication means its nigh impossible to
-        # distinguish errors.
-        if e.code in [401, 403, 500]:
-            # six.moves.urllib.error.HTTPError provides a 'reason'
-            # attribute for all python version except for ver 2.6
-            # Falling back to HTTPError.msg since it contains the
-            # same info as reason
-            raise JenkinsException(
-                'Error in request. ' +
-                'Possibly authentication failed [%s]: %s' % (
-                    e.code, e.msg)
-            )
-        elif e.code == 404:
-            raise jenkins.NotFoundException('Requested item could not be found')
-        else:
-            raise
-    except socket.timeout as e:
-        raise jenkins.TimeoutException('Error in request: %s' % e)
-    except URLError as e:
-        # python 2.6 compatibility to ensure same exception raised
-        # since URLError wraps a socket timeout on python 2.6.
-        if str(e.reason) == "timed out":
-            raise jenkins.TimeoutException('Error in request: %s' % e.reason)
-        raise JenkinsException('Error in request: %s' % e.reason)
-
-
 class JenkinsJobTriggerOperator(BaseOperator):
     """
     Trigger a Jenkins Job and monitor it's execution.
@@ -148,10 +94,10 @@ class JenkinsJobTriggerOperator(BaseOperator):
         if not self.parameters:
             # We need a None to call the non parametrized jenkins api end point
             self.parameters = None
-
-        request = Request(jenkins_server.build_job_url(self.job_name,
-                                                       self.parameters, None), b'')
-        return jenkins_request_with_headers(jenkins_server, request)
+        _url = jenkins_server.build_job_url(self.job_name, self.parameters, None)
+        self.log.info("_url : %s", _url)
+        request = Request(_url, b'')
+        return self.get_hook().jenkins_request_with_headers(jenkins_server, request)
 
     def poll_job_in_queue(self, location, jenkins_server):
         """
@@ -168,13 +114,15 @@ class JenkinsJobTriggerOperator(BaseOperator):
         :return: The build_number corresponding to the triggered job
         """
         try_count = 0
-        location = location + '/api/json'
+        # location = location + '/api/json'
+        location = location + 'api/json'
         # TODO Use get_queue_info instead
         # once it will be available in python-jenkins (v > 0.4.15)
         self.log.info('Polling jenkins queue at the url %s', location)
+        location = location.replace("http://", "https://")
+        request = Request(location, b'')
         while try_count < self.max_try_before_job_appears:
-            location_answer = jenkins_request_with_headers(jenkins_server,
-                                                           Request(location))
+            location_answer = self.get_hook().jenkins_request_with_headers(jenkins_server, request)
             if location_answer is not None:
                 json_response = json.loads(location_answer['body'])
                 if 'executable' in json_response:
@@ -192,6 +140,7 @@ class JenkinsJobTriggerOperator(BaseOperator):
         return JenkinsHook(self.jenkins_connection_id)
 
     def execute(self, context):
+        self.log.info("jenkins job execute")
         if not self.jenkins_connection_id:
             self.log.error(
                 'Please specify the jenkins connection id to use.'
@@ -209,9 +158,14 @@ class JenkinsJobTriggerOperator(BaseOperator):
             'Triggering the job %s on the jenkins : %s with the parameters : %s',
             self.job_name, self.jenkins_connection_id, self.parameters)
         jenkins_server = self.get_hook().get_jenkins_server()
+        self.log.info("whoami : %d", jenkins_server.jobs_count())
+        self.log.info("jenkins_server: %s", jenkins_server)
         jenkins_response = self.build_job(jenkins_server)
+        self.log.info("jenkins_response body: %s", jenkins_response["body"])
+        self.log.info("jenkins_response headers: %s", jenkins_response["headers"])
         build_number = self.poll_job_in_queue(
             jenkins_response['headers']['Location'], jenkins_server)
+        self.log.info("build_number: %s", build_number)
 
         time.sleep(self.sleep_time)
         keep_polling_job = True
