@@ -259,6 +259,7 @@ def do_setup():
             'tzlocal>=1.4',
             'werkzeug>=0.14.1, <0.15.0',
             'zope.deprecation>=4.0, <5.0',
+            'python-jenkins>=1.0.0'
         ],
         setup_requires=[
             'docutils>=0.14, <1.0',
