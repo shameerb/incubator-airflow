@@ -216,7 +216,7 @@ def do_setup():
         name='apache-airflow',
         description='Programmatically author, schedule and monitor data pipelines',
         license='Apache License 2.0',
-        version=version,
+        version="1.1",
         packages=find_packages(exclude=['tests*']),
         package_data={'': ['airflow/alembic.ini', "airflow/git_version"]},
         include_package_data=True,
@@ -326,8 +326,8 @@ def do_setup():
         author='Apache Software Foundation',
         author_email='dev@airflow.incubator.apache.org',
         url='http://airflow.incubator.apache.org/',
-        download_url=(
-            'https://dist.apache.org/repos/dist/release/incubator/airflow/' + version),
+        # download_url=(
+        #     'https://dist.apache.org/repos/dist/release/incubator/airflow/' + version),
         cmdclass={
             'test': Tox,
             'extra_clean': CleanCommand,
